@@ -43,7 +43,7 @@ input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink)
 .pick .em{font-size:44px;line-height:72px}
 .lane .car.im{transform:none;margin-left:9px;top:3px}
 .lane .car.im img{height:40px;width:auto;display:block;transform:rotate(var(--lane,90deg))}
-.joywrap{display:flex;justify-content:center;margin:14px 0 4px}
+.joywrap{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;margin:14px 0 4px}
 #joy{width:170px;height:170px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#555,#222);border:5px solid var(--ink);position:relative;touch-action:none;user-select:none;box-shadow:inset 0 0 20px #000a,5px 5px 0 var(--ink)}
 #knob{position:absolute;width:78px;height:78px;left:41px;top:41px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ff8a9b,var(--accent) 60%,#a3122b);border:4px solid var(--ink);box-shadow:0 6px 0 #0006;pointer-events:none}
 </style></head><body>
@@ -77,7 +77,7 @@ input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink)
  <div class="card hide" id="play"><div id="pStatus" class="status"></div>
   <div style="position:relative;max-width:420px;margin:0 auto"><canvas id="cv" width="360" height="300" style="width:100%;display:block;border:3px solid var(--ink);border-radius:12px"></canvas>
   <div id="pCount" class="count hide" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;text-shadow:3px 3px 0 #fff"></div></div>
-  <div class="joywrap"><div id="joy"><div id="knob"></div></div></div>
+  <div class="joywrap"><span></span><div id="joy"><div id="knob"></div></div><button class="btn" id="bRespawn" style="font-size:1.1rem;padding:8px 10px;justify-self:start">↩️ RESTART</button></div>
   <p class="note">Drag the stick to steer. Push up to boost, pull down to brake. The car drives where you point the stick: release to stop. Follow the arrows for 3 laps and stay on the road! Grab 🎁 boxes: 🚀 boost, ⚡ stun, 💥 universal stun, 🔄 reverse a rival's controls, 🙈 block a rival's screen. (Keyboard: arrows / WASD)</p></div>
  <div class="card"><div id="pPad"></div></div>
 </section>
@@ -146,6 +146,8 @@ function renderTick(){
   if(state.status==='countdown'&&left<=-60000)$('bStart').disabled=true;
   const cn=state.status==='countdown'&&left>-700?(left>0?Math.ceil(left/1000):0):null;     // countdown beeps
   if(cn!==lastCn){lastCn=cn;if(cn!==null){snd.play(cn>0?'beep':'go');vib(cn>0?25:150)}}
+  const rl=Math.ceil((rsUntil-Date.now())/1000),rb=$('bRespawn');                  // restart cooldown label
+  rb.disabled=rl>0||finished;rb.textContent=rl>0?'↩️ '+rl+'s':'↩️ RESTART';
   const showC=state.status==='countdown'&&left>-700;
   ['rCount','pCount'].forEach(id=>{$(id).classList.toggle('hide',!showC);$(id).textContent=left>0?Math.ceil(left/1000):'GO!'});
   $('join').classList.toggle('hide',!!me);$('play').classList.toggle('hide',!me);
@@ -174,7 +176,7 @@ const TILE=240,M=.197*TILE,LAPS=3,W=360,H=300,cv=$('cv'),cx=cv.getContext('2d');
 const TFILE={DU:'UpDown',LR:'LeftRight',RU:'UpToRight',LU:'UpToLeft',DL:'DownToLeft',DR:'DownToRight'},TIMG={};
 for(const k in TFILE){const im=new Image();im.src=encodeURI(TFILE[k]+' Track.png');TIMG[k]=im}
 const DIRS={U:[0,-1],D:[0,1],L:[-1,0],R:[1,0]};
-let rGeo=null,rTR=null,rSeed=null,rOth={},lastCn=null,wasLost=false;
+let rsUntil=0,rGeo=null,rTR=null,rSeed=null,rOth={},lastCn=null,wasLost=false;
 let TR=null,lostNow=false,lostT=0,pre=false,px=0,py=0,vx=0,vy=0,heading=-Math.PI/2,speed=0,lap=0,idx=0,off=false,last=performance.now(),dragging=false,jx=0,jy=0,kx=0,ky=0;
 let others={},got=new Set(),boostUntil=0,msg={t:'',until:0},stunnedNow=false,boostedNow=false,reversedNow=false,blockedNow=false,seen={};
 const toast=(t,ms)=>{msg={t,until:Date.now()+ms}};
@@ -258,6 +260,17 @@ syncBtns();
 ['pointerdown','keydown','touchstart'].forEach(ev=>addEventListener(ev,()=>snd.init(),{passive:true}));   // browsers need a tap before sound can play
 const HIT={stun:[150,60,250],reverse:[80,40,80,40,80],block:[300]};
 
+function respawn(){                         // back to your last checkpoint, 5 s cooldown
+  if(!me||!TR||finished||Date.now()<rsUntil)return;
+  rsUntil=Date.now()+5000;
+  if(pre){idx=TR.N-1;pre=false}
+  const c=TR.cells[idx];px=(c.x+.5)*TILE;py=(c.y+.5)*TILE;vx=vy=speed=0;heading=Math.atan2(c.pn[1],c.pn[0]);
+  boostUntil=0;lostT=0;lostNow=false;wasLost=false;
+  toast('↩️ RESTARTED at your last checkpoint',1800);snd.play('beep');vib(40);
+  api('POST',{action:'join',...pos()}).catch(()=>{});
+}
+$('bRespawn').onclick=respawn;
+addEventListener('keydown',e=>{if(e.code==='KeyR'&&!$('rac').classList.contains('hide')&&document.activeElement.tagName!=='INPUT')respawn()});
 const joy=$('joy'),knob=$('knob');
 function setJoy(e){const r=joy.getBoundingClientRect(),R=r.width/2,m=70;
   let dx=e.clientX-(r.left+R),dy=e.clientY-(r.top+R);const d=Math.hypot(dx,dy);
