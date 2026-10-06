@@ -67,7 +67,6 @@ input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink)
  <div class="card hide" id="play"><div id="pStatus" class="status"></div>
   <div style="position:relative;max-width:420px;margin:0 auto"><canvas id="cv" width="360" height="300" style="width:100%;display:block;border:3px solid var(--ink);border-radius:12px"></canvas>
   <div id="pCount" class="count hide" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;text-shadow:3px 3px 0 #fff"></div></div>
-  <div id="pTrack"></div>
   <div class="joywrap"><div id="joy"><div id="knob"></div></div></div>
   <p class="note">Drag the stick to steer. Push up to boost, pull down to brake. The car drives where you point the stick: release to stop. Follow the arrows for 3 laps and stay on the road! Grab 🎁 boxes: 🚀 boost, ⚡ stun, 💥 universal stun, 🔄 reverse a rival's controls, 🙈 block a rival's screen. (Keyboard: arrows / WASD)</p></div>
  <div class="card"><div id="pPad"></div></div>
@@ -107,9 +106,10 @@ async function poll(){
     if(state.raceId!==lastRace){lastRace=state.raceId;resetDrive();if(me)register()}
     renderData();
   }catch(e){connected=false;showErr('⚠️ '+e.message)}
-  setTimeout(poll,state.status==='countdown'?400:1500);
+  setTimeout(poll,state.status==='countdown'?300:1500);
 }
-const register=()=>api('POST',{action:'join',name:me.name,car:me.car,progress:0}).catch(e=>showErr(e.message));
+const pos=()=>({name:me.name,car:me.car,progress:myProg,x:Math.round(px),y:Math.round(py),h:+heading.toFixed(2)});
+const register=()=>api('POST',{action:'join',...pos(),progress:0}).catch(e=>showErr(e.message));
 
 function show(v){$('ref').classList.toggle('hide',v!=='ref');$('rac').classList.toggle('hide',v!=='rac');
   $('tabR').classList.toggle('on',v==='ref');$('tabP').classList.toggle('on',v==='rac');history.replaceState(null,'','#'+v);}
@@ -125,7 +125,6 @@ function pad(el){
 }
 function renderData(){
   lanes(racers.filter(r=>r.id!==uid||!me),$('rTrack'));
-  if(me)lanes(racers.filter(r=>r.id!==uid).concat([{id:'__me',name:me.name+' (you)',car:me.car,progress:myProg}]),$('pTrack'));
   pad($('rPad'));pad($('pPad'));
   const b=board();$('rWin').innerHTML=b.length?`<div class="winner">🏆 First across the line: <b>${esc(b[0].name)}</b> (${fmt(b[0].ms)})</div>`:'';
   renderTick();
@@ -164,7 +163,7 @@ const TFILE={DU:'UpDown',LR:'LeftRight',RU:'UpToRight',LU:'UpToLeft',DL:'DownToL
 for(const k in TFILE){const im=new Image();im.src=encodeURI(TFILE[k]+' Track.png');TIMG[k]=im}
 const DIRS={U:[0,-1],D:[0,1],L:[-1,0],R:[1,0]};
 let TR=null,px=0,py=0,vx=0,vy=0,heading=-Math.PI/2,speed=0,lap=0,idx=0,off=false,last=performance.now(),dragging=false,jx=0,jy=0,kx=0,ky=0;
-let got=new Set(),boostUntil=0,msg={t:'',until:0},stunnedNow=false,boostedNow=false,reversedNow=false,blockedNow=false,seen={};
+let others={},got=new Set(),boostUntil=0,msg={t:'',until:0},stunnedNow=false,boostedNow=false,reversedNow=false,blockedNow=false,seen={};
 const toast=(t,ms)=>{msg={t,until:Date.now()+ms}};
 const rng=sd=>()=>{sd|=0;sd=sd+0x6D2B79F5|0;let t=Math.imul(sd^sd>>>15,1|sd);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
 
@@ -198,6 +197,7 @@ function onRoad(x,y){
 function resetDrive(){
   TR=makeTrack(state.seed||1);const c=TR.cells[0];
   px=(c.x+.5)*TILE;py=(c.y+.5)*TILE;vx=vy=speed=0;heading=Math.atan2(c.pn[1],c.pn[0]);
+  const sl=[...uid].reduce((a,c)=>a+c.charCodeAt(0),0)%5-2;px-=c.pn[1]*sl*18;py+=c.pn[0]*sl*18;others={};
   lap=0;idx=0;myProg=0;finished=false;off=false;got=new Set();boostUntil=0;seen={};msg={t:'',until:0};
 }
 const POWERS=[['boost',28],['stun',24],['reverse',18],['block',18],['universal',12]];
@@ -226,13 +226,17 @@ addEventListener('keyup',e=>{const k=K[e.code];if(k){held[k]=0;keyUpd()}});
 
 function step(dt){
   if(!TR)return;
+  const alive=new Set();                                   // smooth the other racers' positions
+  racers.forEach(r=>{if(r.id===uid||!(r.x||r.y))return;alive.add(r.id);const o=others[r.id];
+    if(!o)others[r.id]={x:r.x,y:r.y,h:r.h||0,car:r.car,name:r.name};
+    else{const k=Math.min(1,9*dt);o.x+=(r.x-o.x)*k;o.y+=(r.y-o.y)*k;let d=(r.h||0)-o.h;d=Math.atan2(Math.sin(d),Math.cos(d));o.h+=d*k;o.car=r.car;o.name=r.name}});
+  for(const id in others)if(!alive.has(id))delete others[id];
   const run=state.status==='countdown'&&now()>=state.goAt,t=Date.now(),n=now(),f=fx[uid]||{};
   const live=run&&!finished,on=k=>live&&f[k]&&f[k].until>n;
   stunnedNow=on('stun');reversedNow=on('reverse');blockedNow=on('block');
   boostedNow=live&&t<boostUntil;
   [['stun','😵 STUNNED'],['reverse','🔄 REVERSED'],['block','🙈 BLOCKED']].forEach(([k,txt])=>{
     if(on(k)&&seen[k]!==f[k].until){seen[k]=f[k].until;toast(txt+' by '+f[k].by+'!',2200)}});
-  $('pTrack').style.visibility=blockedNow?'hidden':'';
   let sx=dragging?jx:kx,sy=dragging?jy:ky;
   if(reversedNow){sx=-sx;sy=-sy}                       // reversed controls
   const mg=Math.hypot(sx,sy);if(mg>1){sx/=mg;sy/=mg}
@@ -253,9 +257,9 @@ function step(dt){
       else if(ci===(idx+TR.N-1)%TR.N&&!(idx===0&&lap===0)){if(idx===0)lap--;idx=ci}
     }
     if(lap>=LAPS){finished=true;vx=vy=speed=0;
-      api('POST',{action:'progress',name:me.name,car:me.car,progress:100}).catch(()=>{});
+      api('POST',{action:'progress',...pos(),progress:100}).catch(()=>{});
       api('POST',{action:'finish',name:me.name}).then(poll_now).catch(e=>showErr(e.message))}
-    else if(t-lastSync>400){lastSync=t;api('POST',{action:'progress',name:me.name,car:me.car,progress:myProg}).catch(()=>{})}
+    else if(t-lastSync>250){lastSync=t;api('POST',{action:'progress',...pos()}).catch(()=>{})}
   }else{vx=vy=speed=0;off=false}
   if(!finished){ // smooth progress inside the current tile
     const c=TR.cells[idx],ox=(c.x+.5)*TILE,oy=(c.y+.5)*TILE,mid=k=>[ox+DIRS[k][0]*TILE/2,oy+DIRS[k][1]*TILE/2];
@@ -263,11 +267,21 @@ function step(dt){
     const d1=Math.hypot(px-a[0],py-a[1]),d2=Math.hypot(px-b[0],py-b[1]);
     myProg=Math.min(99.9,Math.max(0,(lap*TR.N+idx+d1/(d1+d2+1e-6))/(LAPS*TR.N)*100));
   }else myProg=100;
-  const el=$('myCar');if(el)el.style.left=`calc(${myProg}% * .93 + 2px)`;
 }
 function procTile(c,x,y){cx.fillStyle='#c8d0da';cx.fillRect(x+M,y+M,TILE-2*M,TILE-2*M);
   c.open.split('').forEach(k=>{if(k==='U')cx.fillRect(x+M,y,TILE-2*M,M+1);if(k==='D')cx.fillRect(x+M,y+TILE-M-1,TILE-2*M,M+1);
     if(k==='L')cx.fillRect(x,y+M,M+1,TILE-2*M);if(k==='R')cx.fillRect(x+TILE-M-1,y+M,M+1,TILE-2*M)})}
+function drawCar(x,y,key,hd,wob){
+  cx.save();cx.translate(x,y);
+  cx.fillStyle='#0004';cx.beginPath();cx.ellipse(3,5,16,24,hd+Math.PI/2,0,7);cx.fill();
+  const C=CARS[key],im=C&&C.img;cx.rotate(hd+Math.PI/2+wob);
+  if(im&&im.complete&&im.naturalWidth){
+    const q=Math.abs(CAR_TURN)%180===90,lenP=q?im.naturalWidth:im.naturalHeight,widP=q?im.naturalHeight:im.naturalWidth;
+    const L=60,Wd=Math.min(46,L*widP/lenP);
+    cx.rotate(CAR_TURN*Math.PI/180);cx.drawImage(im,-(q?L:Wd)/2,-(q?Wd:L)/2,q?L:Wd,q?Wd:L);
+  }else{cx.rotate(-Math.PI/2);cx.textAlign='center';cx.textBaseline='middle';cx.font='38px serif';cx.fillText(C?C.e:(key||'🚗'),0,0)}
+  cx.restore();
+}
 function draw(){
   cx.fillStyle='#b8e35a';cx.fillRect(0,0,W,H);
   cx.save();cx.translate(W/2-px,H/2-py);
@@ -280,18 +294,13 @@ function draw(){
   });
   cx.textAlign='center';cx.textBaseline='middle';cx.font='28px serif';
   TR.pk.forEach((p,i)=>{if(!got.has(i))cx.fillText('🎁',p[0],p[1]+Math.sin(Date.now()/200+i)*3)});
+  for(const id in others){const o=others[id];drawCar(o.x,o.y,o.car,o.h,0);       // the other players
+    cx.font='15px Bangers,Impact,sans-serif';cx.lineWidth=3;cx.strokeStyle='#fff';cx.fillStyle='#1c1c2e';
+    const lb=(o.name||'')+fxI(id);cx.strokeText(lb,o.x,o.y-38);cx.fillText(lb,o.x,o.y-38)}
   cx.restore();
   const sh=stunnedNow?(Math.random()-.5)*6:0;
-  cx.save();cx.translate(W/2+sh,H/2);
-  cx.fillStyle='#0004';cx.beginPath();cx.ellipse(3,5,16,24,heading+Math.PI/2,0,7);cx.fill();
-  if(boostedNow){cx.font='26px serif';cx.fillText('🔥',-Math.cos(heading)*40,-Math.sin(heading)*40)}
-  const C=CARS[me.car],im=C&&C.img;cx.rotate(heading+Math.PI/2+(stunnedNow?Math.sin(Date.now()/60)*.5:0));
-  if(im&&im.complete&&im.naturalWidth){
-    const q=Math.abs(CAR_TURN)%180===90,lenP=q?im.naturalWidth:im.naturalHeight,widP=q?im.naturalHeight:im.naturalWidth;
-    const L=60,Wd=Math.min(46,L*widP/lenP);
-    cx.rotate(CAR_TURN*Math.PI/180);cx.drawImage(im,-(q?L:Wd)/2,-(q?Wd:L)/2,q?L:Wd,q?Wd:L);
-  }else{cx.rotate(-Math.PI/2);cx.font='38px serif';cx.fillText(C?C.e:me.car,0,0)}
-  cx.restore();
+  if(boostedNow){cx.font='26px serif';cx.textAlign='center';cx.fillText('🔥',W/2-Math.cos(heading)*40,H/2-Math.sin(heading)*40)}
+  drawCar(W/2+sh,H/2,me.car,heading,stunnedNow?Math.sin(Date.now()/60)*.5:0);
   cx.font='30px serif';if(stunnedNow)cx.fillText('😵',W/2,H/2-40);else if(reversedNow)cx.fillText('🔄',W/2,H/2-40);
   cx.fillStyle='#0008';cx.fillRect(10,10,W-20,12);cx.fillStyle='#ffc400';cx.fillRect(10,10,(W-20)*myProg/100,12);
   cx.textAlign='left';cx.font='18px Bangers,Impact,sans-serif';cx.fillStyle='#000';
