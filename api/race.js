@@ -24,8 +24,9 @@ module.exports = async (req, res) => {
     const now = Date.now();
     if (req.method === 'GET') {
       const state = await getState();
-      const [racers, finishes] = await redis([['HGETALL', 'racers:' + state.raceId], ['HGETALL', 'finishes:' + state.raceId]]);
-      return res.json({ now, pinRequired: !!PIN, state, racers: hash(racers), finishes: hash(finishes) });
+      const id = state.raceId;
+      const [racers, finishes, stuns] = await redis([['HGETALL', 'racers:' + id], ['HGETALL', 'finishes:' + id], ['HGETALL', 'stuns:' + id]]);
+      return res.json({ now, pinRequired: !!PIN, state, racers: hash(racers), finishes: hash(finishes), stuns: hash(stuns) });
     }
     if (req.method !== 'POST') return res.status(405).end();
     const b = typeof req.body === 'string' ? parse(req.body) || {} : req.body || {};
@@ -44,9 +45,22 @@ module.exports = async (req, res) => {
 
     if (b.action === 'join' || b.action === 'progress') {
       const key = 'racers:' + state.raceId;
-      const rec = { name: clean(b.name), car: String(b.car || '🚗').slice(0, 4), progress: Math.max(0, Math.min(100, +b.progress || 0)) };
+      const rec = { name: clean(b.name), car: String(b.car || '🚗').slice(0, 4), progress: Math.max(0, Math.min(100, +b.progress || 0)), t: now };
       await redis([['HSET', key, uid, JSON.stringify(rec)], ['EXPIRE', key, 86400]]);
       return res.json({ ok: true });
+    }
+    if (b.action === 'stun') {
+      // Power-up: stun ONE random active racer (not yourself, not finished, not already stunned)
+      if (state.status !== 'countdown' || now < state.goAt) return res.json({ ok: true, hit: null });
+      const id = state.raceId, sk = 'stuns:' + id;
+      const [rs, fs, ss] = await redis([['HGETALL', 'racers:' + id], ['HGETALL', 'finishes:' + id], ['HGETALL', sk]]);
+      const done = new Set(hash(fs).map(f => f.id));
+      const stunned = new Set(hash(ss).filter(s => s.until > now).map(s => s.id));
+      const targets = hash(rs).filter(r => r.id !== uid && !done.has(r.id) && !stunned.has(r.id) && r.t > now - 6000 && (r.progress || 0) < 100);
+      if (!targets.length) return res.json({ ok: true, hit: null });
+      const v = targets[Math.floor(Math.random() * targets.length)];
+      await redis([['HSET', sk, v.id, JSON.stringify({ until: now + 2500, by: clean(b.name) })], ['EXPIRE', sk, 86400]]);
+      return res.json({ ok: true, hit: { id: v.id, name: v.name } });
     }
     if (b.action === 'finish') {
       if (state.status !== 'countdown' || now < state.goAt) return res.status(400).json({ error: 'No race running' });
