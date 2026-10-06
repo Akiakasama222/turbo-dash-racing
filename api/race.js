@@ -25,8 +25,8 @@ module.exports = async (req, res) => {
     if (req.method === 'GET') {
       const state = await getState();
       const id = state.raceId;
-      const [racers, finishes, stuns] = await redis([['HGETALL', 'racers:' + id], ['HGETALL', 'finishes:' + id], ['HGETALL', 'stuns:' + id]]);
-      return res.json({ now, pinRequired: !!PIN, state, racers: hash(racers), finishes: hash(finishes), stuns: hash(stuns) });
+      const [racers, finishes, fx] = await redis([['HGETALL', 'racers:' + id], ['HGETALL', 'finishes:' + id], ['HGETALL', 'fx:' + id]]);
+      return res.json({ now, pinRequired: !!PIN, state, racers: hash(racers), finishes: hash(finishes), fx: hash(fx) });
     }
     if (req.method !== 'POST') return res.status(405).end();
     const b = typeof req.body === 'string' ? parse(req.body) || {} : req.body || {};
@@ -49,18 +49,26 @@ module.exports = async (req, res) => {
       await redis([['HSET', key, uid, JSON.stringify(rec)], ['EXPIRE', key, 86400]]);
       return res.json({ ok: true });
     }
-    if (b.action === 'stun') {
-      // Power-up: stun ONE random active racer (not yourself, not finished, not already stunned)
-      if (state.status !== 'countdown' || now < state.goAt) return res.json({ ok: true, hit: null });
-      const id = state.raceId, sk = 'stuns:' + id;
-      const [rs, fs, ss] = await redis([['HGETALL', 'racers:' + id], ['HGETALL', 'finishes:' + id], ['HGETALL', sk]]);
+    if (b.action === 'power') {
+      // Attack power-ups: stun (1 random), universal (everyone else), reverse (1 random), block (1 random)
+      const DUR = { stun: 2500, universal: 2000, reverse: 2500, block: 3000 };
+      const kind = b.kind;
+      if (!DUR[kind]) return res.status(400).json({ error: 'Unknown power' });
+      if (state.status !== 'countdown' || now < state.goAt) return res.json({ ok: true, hits: [] });
+      const id = state.raceId, fk = 'fx:' + id, eff = kind === 'universal' ? 'stun' : kind;
+      const [rs, fs, xs] = await redis([['HGETALL', 'racers:' + id], ['HGETALL', 'finishes:' + id], ['HGETALL', fk]]);
       const done = new Set(hash(fs).map(f => f.id));
-      const stunned = new Set(hash(ss).filter(s => s.until > now).map(s => s.id));
-      const targets = hash(rs).filter(r => r.id !== uid && !done.has(r.id) && !stunned.has(r.id) && r.t > now - 6000 && (r.progress || 0) < 100);
-      if (!targets.length) return res.json({ ok: true, hit: null });
-      const v = targets[Math.floor(Math.random() * targets.length)];
-      await redis([['HSET', sk, v.id, JSON.stringify({ until: now + 2500, by: clean(b.name) })], ['EXPIRE', sk, 86400]]);
-      return res.json({ ok: true, hit: { id: v.id, name: v.name } });
+      const busy = new Set(hash(xs).filter(x => x.until > now).map(x => x.id));
+      let targets = hash(rs).filter(r => r.id !== uid && !done.has(r.id) && r.t > now - 6000 && (r.progress || 0) < 100);
+      if (kind !== 'universal') {
+        targets = targets.filter(r => !busy.has(r.id + '|' + eff));
+        if (targets.length) targets = [targets[Math.floor(Math.random() * targets.length)]];
+      }
+      if (!targets.length) return res.json({ ok: true, hits: [] });
+      const cmds = targets.map(v => ['HSET', fk, v.id + '|' + eff, JSON.stringify({ until: now + DUR[kind], by: clean(b.name), kind: eff })]);
+      cmds.push(['EXPIRE', fk, 86400]);
+      await redis(cmds);
+      return res.json({ ok: true, hits: targets.map(v => ({ id: v.id, name: v.name })) });
     }
     if (b.action === 'finish') {
       if (state.status !== 'countdown' || now < state.goAt) return res.status(400).json({ error: 'No race running' });
