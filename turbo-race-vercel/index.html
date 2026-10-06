@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Turbo Dash Racing</title>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#fff7e0;--ink:#1c1c2e;--card:#fff;--road:#3a3a4a;--accent:#ff3d5a;--accent2:#ffc400;--paper:#fffbe6;--line:#9ec5ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15152a;--ink:#f5f1e6;--card:#22223f;--road:#2b2b3c;--paper:#2d2b3f;--line:#4a5a8a}}
+:root[data-theme="dark"]{--bg:#15152a;--ink:#f5f1e6;--card:#22223f;--road:#2b2b3c;--paper:#2d2b3f;--line:#4a5a8a}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Patrick Hand','Comic Sans MS',sans-serif;font-size:18px}
+h1,h2,.big{font-family:Bangers,Impact,sans-serif;letter-spacing:2px;margin:0}
+header{background:var(--accent);color:#fff;padding:14px 16px;text-align:center;border-bottom:6px dashed var(--accent2)}
+header h1{font-size:2.4rem;text-shadow:3px 3px 0 #0003}
+nav{display:flex;gap:8px;justify-content:center;margin-top:8px}
+nav button{font:inherit;font-family:Bangers,Impact,sans-serif;letter-spacing:1px;font-size:1.2rem;padding:6px 18px;border:3px solid #fff;border-radius:30px;background:transparent;color:#fff;cursor:pointer}
+nav button.on{background:#fff;color:var(--accent)}
+main{max-width:860px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:3px solid var(--ink);border-radius:16px;padding:14px;margin-bottom:16px;box-shadow:5px 5px 0 var(--ink)}
+.btn{font-family:Bangers,Impact,sans-serif;letter-spacing:2px;font-size:1.6rem;padding:10px 26px;border:3px solid var(--ink);border-radius:14px;background:var(--accent2);color:#1c1c2e;cursor:pointer;box-shadow:4px 4px 0 var(--ink)}
+.btn:active{transform:translate(3px,3px);box-shadow:1px 1px 0 var(--ink)}
+.btn:disabled{opacity:.5;cursor:not-allowed}.btn.red{background:var(--accent);color:#fff}
+.btn.go{font-size:3rem;padding:18px 40px;width:100%}
+input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink);border-radius:10px;background:var(--card);color:var(--ink);width:min(260px,100%)}
+.lane{position:relative;height:46px;background:var(--road);border-radius:8px;margin:8px 0;overflow:hidden;border-bottom:3px dashed #fff8}
+.lane .fin{position:absolute;right:0;top:0;bottom:0;width:22px;background:repeating-conic-gradient(#fff 0 25%,#000 0 50%) 0 0/11px 11px}
+.lane .car{position:absolute;top:3px;font-size:30px;transform:scaleX(-1);transition:left .25s linear;white-space:nowrap}
+.lane .nm{position:absolute;left:8px;top:2px;font-size:.8rem;color:#fff;opacity:.85}
+.status{text-align:center;font-size:1.3rem;margin:6px 0}
+.count{font-size:6rem;text-align:center;color:var(--accent);line-height:1}
+.winner{background:var(--accent2);color:#1c1c2e;text-align:center;border-radius:14px;padding:10px;border:3px solid var(--ink);font-size:1.4rem;margin-bottom:12px}
+.pad{background:var(--paper);background-image:repeating-linear-gradient(transparent 0 31px,var(--line) 31px 32px);border:3px solid var(--ink);border-left:22px dotted var(--accent);border-radius:8px;padding:8px 14px 6px;line-height:32px;min-height:96px}
+.pad h2{font-size:1.7rem;line-height:36px}.pad .row{display:flex;gap:8px;justify-content:space-between}.pad .me{background:#ffc40055}
+.pad .empty{opacity:.6}
+.tap{touch-action:manipulation;user-select:none}
+.note{font-size:.9rem;opacity:.75;text-align:center}
+.hide{display:none}
+</style></head><body>
+<header><h1>🏁 TURBO DASH RACING 🏁</h1>
+<nav><button id="tabR" class="on">🚦 Referee</button><button id="tabP">🏎️ Racers</button></nav></header>
+<main>
+<div id="err" class="winner hide" style="background:#ff3d5a;color:#fff"></div>
+<section id="ref">
+ <div class="card"><div id="rStatus" class="status">Connecting…</div>
+  <div id="rCount" class="count hide"></div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+   <button class="btn red" id="bStart">🚦 START RACE</button>
+   <button class="btn" id="bReset">🔄 New Race</button></div></div>
+ <div class="card"><h2>Live Track</h2><div id="rTrack"></div></div>
+ <div class="card"><div id="rWin"></div><div id="rPad"></div></div>
+</section>
+<section id="rac" class="hide">
+ <div class="card" id="join"><h2>Join the race!</h2><p>Pick your name, then wait for the referee.</p>
+  <input id="nm" maxlength="14" placeholder="Racer name"> <button class="btn" id="bJoin">JOIN 🚗</button></div>
+ <div class="card hide" id="play"><div id="pStatus" class="status"></div>
+  <div id="pCount" class="count hide"></div><div id="pTrack"></div>
+  <button class="btn go red tap" id="bTap" disabled>MASH ME! 💨</button>
+  <p class="note">Tap the button (or press SPACE) as fast as you can!</p></div>
+ <div class="card"><div id="pPad"></div></div>
+</section>
+</main>
+<script>
+const CARS=['🏎️','🚗','🚙','🚓','🚕','🛻','🏍️','🚜'];
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=ms=>(ms/1000).toFixed(2)+'s';
+let uid;try{uid=localStorage.getItem('uid')}catch(e){}
+if(!uid){uid='u'+Math.random().toString(36).slice(2,10);try{localStorage.setItem('uid',uid)}catch(e){}}
+let state={raceId:'r0',status:'waiting',goAt:0},racers=[],finishes=[],offset=0,pinRequired=false,pin='';
+let me=null,myProg=0,finished=false,lastRace=null,lastSync=0,connected=false;
+const now=()=>Date.now()+offset;
+
+async function api(method,body){
+  const r=await fetch('/api/race',method==='GET'?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid,...body})});
+  const j=await r.json().catch(()=>({error:'Bad response'}));
+  if(!r.ok)throw new Error(j.error||('Error '+r.status));return j;
+}
+function showErr(m){const e=$('err');e.textContent=m||'';e.classList.toggle('hide',!m)}
+
+async function poll(){
+  try{
+    const t0=Date.now(),j=await api('GET');
+    offset=j.now-(t0+Date.now())/2;state=j.state;racers=j.racers;finishes=j.finishes;pinRequired=j.pinRequired;connected=true;showErr('');
+    if(state.raceId!==lastRace){lastRace=state.raceId;myProg=0;finished=false;if(me)register()}
+    renderData();
+  }catch(e){connected=false;showErr('⚠️ '+e.message)}
+  setTimeout(poll,800);
+}
+const register=()=>api('POST',{action:'join',name:me.name,car:me.car,progress:0}).catch(e=>showErr(e.message));
+
+function show(v){$('ref').classList.toggle('hide',v!=='ref');$('rac').classList.toggle('hide',v!=='rac');
+  $('tabR').classList.toggle('on',v==='ref');$('tabP').classList.toggle('on',v==='rac');history.replaceState(null,'','#'+v);}
+$('tabR').onclick=()=>show('ref');$('tabP').onclick=()=>show('rac');
+
+const board=()=>finishes.slice().sort((a,b)=>a.ms-b.ms);
+function lanes(list,el){
+  el.innerHTML=list.length?list.map(r=>`<div class="lane"><span class="nm">${esc(r.name)}</span><div class="fin"></div><div class="car" style="left:calc(${Math.min(100,r.progress||0)}% * .93 + 2px)">${r.car||'🚗'}</div></div>`).join(''):'<p class="empty note">No racers yet…</p>';
+}
+function pad(el){
+  const b=board(),med=['🥇','🥈','🥉'];
+  el.innerHTML=`<div class="pad"><h2>📝 Race Notepad</h2>`+(b.length?b.map((f,i)=>`<div class="row ${f.uid===uid?'me':''}"><span>${med[i]||(i+1)+'.'} ${esc(f.name)}</span><b>${fmt(f.ms)}</b></div>`).join(''):'<div class="empty">Nobody has finished yet…</div>')+`</div>`;
+}
+function renderData(){
+  lanes(racers.filter(r=>r.id!==uid||!me),$('rTrack'));
+  if(me)lanes(racers.filter(r=>r.id!==uid).concat([{name:me.name+' (you)',car:me.car,progress:myProg}]),$('pTrack'));
+  pad($('rPad'));pad($('pPad'));
+  const b=board();$('rWin').innerHTML=b.length?`<div class="winner">🏆 First across the line: <b>${esc(b[0].name)}</b> (${fmt(b[0].ms)})</div>`:'';
+  renderTick();
+}
+function renderTick(){
+  const left=state.goAt-now(),cd=state.status==='countdown'&&left>0,run=state.status==='countdown'&&left<=0;
+  $('rStatus').textContent=!connected?'Connecting…':cd?'Get ready…':run?'🏁 RACE IN PROGRESS!':'Waiting for racers — '+racers.length+' on the grid';
+  $('bStart').disabled=!connected||cd||run||state.status==='countdown'&&left>-60000||racers.length<1;
+  if(state.status==='countdown'&&left<=-60000)$('bStart').disabled=true;
+  const showC=state.status==='countdown'&&left>-700;
+  ['rCount','pCount'].forEach(id=>{$(id).classList.toggle('hide',!showC);$(id).textContent=left>0?Math.ceil(left/1000):'GO!'});
+  $('join').classList.toggle('hide',!!me);$('play').classList.toggle('hide',!me);
+  $('pStatus').textContent=finished?'🎉 You finished! Check the notepad.':cd?'Get ready…':run?'GO GO GO!':'Waiting for the referee to start…';
+  $('bTap').disabled=!run||finished;
+}
+setInterval(renderTick,100);
+
+async function ref(action){
+  if(pinRequired&&!pin){pin=prompt('Referee PIN?')||''}
+  try{await api('POST',{action,pin});showErr('');poll_now()}catch(e){if(/PIN/.test(e.message))pin='';showErr('⚠️ '+e.message)}
+}
+const poll_now=async()=>{try{const t0=Date.now(),j=await api('GET');offset=j.now-(t0+Date.now())/2;state=j.state;racers=j.racers;finishes=j.finishes;renderData()}catch(e){}};
+$('bStart').onclick=()=>ref('start');$('bReset').onclick=()=>ref('reset');
+
+$('bJoin').onclick=()=>{const n=$('nm').value.trim();if(!n){$('nm').focus();return}
+  me={name:n,car:CARS[Math.floor(Math.random()*CARS.length)]};myProg=0;finished=false;register();renderData()};
+function tap(){
+  if(!me||finished||state.status!=='countdown'||now()<state.goAt)return;
+  myProg+=1.5+Math.random()*.6;
+  if(myProg>=100){myProg=100;finished=true;
+    api('POST',{action:'finish',name:me.name}).then(poll_now).catch(e=>showErr(e.message));}
+  if(Date.now()-lastSync>400||finished){lastSync=Date.now();api('POST',{action:'progress',name:me.name,car:me.car,progress:myProg}).catch(()=>{})}
+  renderData();
+}
+$('bTap').onclick=tap;
+addEventListener('keydown',e=>{if(e.code==='Space'&&!$('rac').classList.contains('hide')&&document.activeElement.tagName!=='INPUT'){e.preventDefault();tap()}});
+show(location.hash==='#rac'?'rac':'ref');poll();
+</script></body></html>
