@@ -57,7 +57,7 @@ input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink)
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
    <button class="btn red" id="bStart">🚦 START RACE</button>
    <button class="btn" id="bReset">🔄 New Race</button></div></div>
- <div class="card"><h2>🗺️ Track Map</h2><canvas id="rmap" width="400" height="320" style="width:100%;max-width:520px;display:block;margin:6px auto 0;border:3px solid var(--ink);border-radius:12px"></canvas></div>
+ <div class="card"><h2>🗺️ Track Map</h2><canvas id="rmap" width="448" height="320" style="width:100%;max-width:520px;display:block;margin:6px auto 0;border:3px solid var(--ink);border-radius:12px"></canvas></div>
  <div class="card"><h2>Live Track</h2><div id="rTrack"></div></div>
  <div class="card"><div id="rWin"></div><div id="rPad"></div></div>
 </section>
@@ -172,11 +172,11 @@ const toast=(t,ms)=>{msg={t,until:Date.now()+ms}};
 const rng=sd=>()=>{sd|=0;sd=sd+0x6D2B79F5|0;let t=Math.imul(sd^sd>>>15,1|sd);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
 
 function makeTrack(seed){            // same seed => same track on every device
-  const R=rng(seed),GW=10,GH=8,w=4+Math.floor(R()*3),h=3+Math.floor(R()*2),P=[];
+  const R=rng(seed),GW=14,GH=10,w=6+Math.floor(R()*4),h=4+Math.floor(R()*3),P=[];
   for(let x=1;x<=w;x++)P.push([x,1]);for(let y=2;y<=h;y++)P.push([w,y]);
   for(let x=w-1;x>=1;x--)P.push([x,h]);for(let y=h-1;y>=2;y--)P.push([1,y]);
   const used=new Set(P.map(c=>c+''));
-  for(let tries=0;tries<80&&P.length<24;tries++){      // bump the loop outward/inward for variety
+  for(let tries=0;tries<300&&P.length<42;tries++){      // bump the loop outward/inward for variety
     const i=Math.floor(R()*P.length),A=P[i],B=P[(i+1)%P.length],dx=B[0]-A[0],dy=B[1]-A[1],s=R()<.5?1:-1;
     const A2=[A[0]-dy*s,A[1]+dx*s],B2=[B[0]-dy*s,B[1]+dx*s];
     if([A2,B2].some(c=>c[0]<0||c[1]<0||c[0]>=GW||c[1]>=GH||used.has(c+'')))continue;
@@ -189,8 +189,8 @@ function makeTrack(seed){            // same seed => same track on every device
   const cells=Q.map((c,i)=>{const p=Q[(i+N-1)%N],n=Q[(i+1)%N],a=nm(c,p),b=nm(c,n);
     return{x:c[0],y:c[1],open:[a,b].sort().join(''),pn:DIRS[b]}});
   const map=new Map(cells.map((c,i)=>[c.x+','+c.y,i])),pk=[];
-  for(let i=1;i<N;i+=3)pk.push([(cells[i].x+.5)*TILE+(R()-.5)*60,(cells[i].y+.5)*TILE+(R()-.5)*60]);
-  return{cells,N,map,pk};
+  for(let i=2;i<N;i+=4)pk.push([(cells[i].x+.5)*TILE+(R()-.5)*60,(cells[i].y+.5)*TILE+(R()-.5)*60]);
+  return{cells,N,map,pk,GW,GH};
 }
 function onRoad(x,y){
   const cx_=Math.floor(x/TILE),cy_=Math.floor(y/TILE),i=TR.map.get(cx_+','+cy_);if(i===undefined)return false;
@@ -204,9 +204,9 @@ function resetDrive(){
   const sl=[...uid].reduce((a,c)=>a+c.charCodeAt(0),0)%5-2;px-=c.pn[1]*sl*18;py+=c.pn[0]*sl*18;others={};
   wasLost=false;lap=0;idx=0;pre=false;lostT=0;lostNow=false;myProg=0;finished=false;off=false;got=new Set();boostUntil=0;seen={};msg={t:'',until:0};
 }
-const POWERS=[['boost',28],['stun',24],['reverse',18],['block',18],['universal',12]];
+const POWERS=[['boost',38],['stun',19],['reverse',14.33],['block',14.33],['universal',14.34]];   // reverse / block / universal are even
 function usePower(){
-  let r=Math.random()*100,k='boost';for(const [n,w] of POWERS){if((r-=w)<0){k=n;break}}
+  let r=Math.random()*POWERS.reduce((a,p)=>a+p[1],0),k='boost';for(const [n,w] of POWERS){if((r-=w)<0){k=n;break}}
   snd.play('pick');vib(40);
   if(k==='boost'){boostUntil=Date.now()+2500;toast('🚀 SPEED BOOST!',1500);snd.play('boost');vib([40,30,60]);return}
   snd.play('attack');
@@ -283,10 +283,10 @@ function step(dt){
   if(mg<.12||!live||stunnedNow){sx=sy=0}
   if(live){
     off=!onRoad(px,py);
-    const maxV=off?(boostedNow?200:110):(boostedNow?420:300);
+    const maxV=off?(boostedNow?240:132):(boostedNow?504:360);
     if(stunnedNow){vx*=Math.max(0,1-6*dt);vy*=Math.max(0,1-6*dt)}
     else{vx+=(sx*maxV-vx)*Math.min(1,5*dt);vy+=(sy*maxV-vy)*Math.min(1,5*dt)}
-    px=Math.max(0,Math.min(10*TILE,px+vx*dt));py=Math.max(0,Math.min(8*TILE,py+vy*dt));
+    px=Math.max(0,Math.min(TR.GW*TILE,px+vx*dt));py=Math.max(0,Math.min(TR.GH*TILE,py+vy*dt));
     speed=Math.hypot(vx,vy);
     if(speed>25){let d=Math.atan2(vy,vx)-heading;d=Math.atan2(Math.sin(d),Math.cos(d));heading+=d*Math.min(1,10*dt)}
     if(!stunnedNow)TR.pk.forEach((p,i)=>{if(!got.has(i)&&Math.hypot(px-p[0],py-p[1])<30){got.add(i);usePower()}});
@@ -330,17 +330,17 @@ function drawCar(x,y,key,hd,wob,g,sc){
   g.restore();
 }
 function drawMap(dt){                       // referee overview map
-  const g=$('rmap').getContext('2d'),sd=state.seed||1,MT=40,S=MT/TILE;
+  const g=$('rmap').getContext('2d'),sd=state.seed||1,MT=32,S=MT/TILE;
   if(rSeed!==sd){rSeed=sd;rTR=makeTrack(sd);rOth={}}
   const alive=new Set();
   racers.forEach(r=>{if(!(r.x||r.y))return;alive.add(r.id);const o=rOth[r.id];
     if(!o)rOth[r.id]={x:r.x,y:r.y,h:r.h||0,car:r.car,name:r.name,p:r.progress||0};
     else{const k=Math.min(1,9*dt);o.x+=(r.x-o.x)*k;o.y+=(r.y-o.y)*k;let d=(r.h||0)-o.h;d=Math.atan2(Math.sin(d),Math.cos(d));o.h+=d*k;o.car=r.car;o.name=r.name;o.p=r.progress||0}});
   for(const id in rOth)if(!alive.has(id))delete rOth[id];
-  g.fillStyle='#b8e35a';g.fillRect(0,0,400,320);
+  g.fillStyle='#b8e35a';g.fillRect(0,0,448,320);
   rTR.cells.forEach(c=>{const im=TIMG[c.open];if(im&&im.complete&&im.naturalWidth)g.drawImage(im,c.x*MT,c.y*MT,MT+1,MT+1);
     else{g.fillStyle='#c8d0da';g.fillRect(c.x*MT+8,c.y*MT+8,MT-16,MT-16)}});
-  const c0=rTR.cells[0];g.font='16px serif';g.textAlign='center';g.textBaseline='middle';g.fillText('🏁',(c0.x+.5)*MT,(c0.y+.5)*MT);
+  const c0=rTR.cells[0];g.font='14px serif';g.textAlign='center';g.textBaseline='middle';g.fillText('🏁',(c0.x+.5)*MT,(c0.y+.5)*MT);
   const ids=Object.keys(rOth),top=ids.reduce((b,id)=>rOth[id].p>(b?rOth[b].p:-1)?id:b,null);
   ids.forEach(id=>{const o=rOth[id];drawCar(o.x*S,o.y*S,o.car,o.h,0,g,.4);
     g.font='12px Bangers,Impact,sans-serif';g.lineWidth=3;g.strokeStyle='#fff';g.fillStyle='#1c1c2e';g.textAlign='center';
