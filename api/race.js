@@ -45,7 +45,7 @@ module.exports = async (req, res) => {
 
     if (b.action === 'join' || b.action === 'progress') {
       const key = 'racers:' + state.raceId;
-      const rec = { name: clean(b.name), car: String(b.car || '🚗').slice(0, 4), progress: Math.max(0, Math.min(100, +b.progress || 0)), t: now };
+      const rec = { name: clean(b.name), car: String(b.car || '🚗').slice(0, 4), progress: Math.max(0, Math.min(100, +b.progress || 0)), x: Math.round(+b.x || 0), y: Math.round(+b.y || 0), h: +(+b.h || 0).toFixed(2), t: now };
       await redis([['HSET', key, uid, JSON.stringify(rec)], ['EXPIRE', key, 86400]]);
       return res.json({ ok: true });
     }
