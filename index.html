@@ -48,10 +48,19 @@ input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink)
 #knob{position:absolute;width:78px;height:78px;left:41px;top:41px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ff8a9b,var(--accent) 60%,#a3122b);border:4px solid var(--ink);box-shadow:0 6px 0 #0006;pointer-events:none}
 </style></head><body>
 <header><h1>🏁 TURBO DASH RACING 🏁</h1>
-<nav><button id="tabR" class="on">🚦 Referee</button><button id="tabP">🏎️ Racers</button><button id="bSnd" title="Sound" style="padding:6px 12px">🔊</button><button id="bVib" title="Vibration" style="padding:6px 12px">📳</button></nav></header>
+<nav id="nav" class="hide"><button id="tabR" class="on">🚦 Referee</button><button id="tabP">🏎️ Racers</button><button id="bSnd" title="Sound" style="padding:6px 12px">🔊</button><button id="bVib" title="Vibration" style="padding:6px 12px">📳</button></nav><div id="roomBar" class="hide" style="margin-top:8px;font-size:1.05rem">Room <b id="roomCode" style="letter-spacing:3px;font-size:1.3rem"></b> ·
+ <a id="copyLink" href="#" style="color:#fff">📋 Copy invite link</a> · <a id="refLogin" href="#" class="hide" style="color:#fff">🚦 Referee login</a> · <a href="/" style="color:#fff">Leave</a></div>
+</header>
 <main>
+<section id="lobby" class="hide">
+ <div class="card"><h2>🚦 Create a room</h2><p>You become the referee. Share the room code or invite link with your group.</p>
+  <input id="newPin" maxlength="8" placeholder="Referee PIN (optional)"> <button class="btn red" id="bCreate">CREATE ROOM</button></div>
+ <div class="card"><h2>🏎️ Join a room</h2><p>Got a code from your referee? Type it here.</p>
+  <input id="joinCode" maxlength="6" placeholder="CODE" style="text-transform:uppercase;letter-spacing:4px;text-align:center;width:150px"> <button class="btn" id="bEnter">ENTER</button></div>
+ <p id="lobbyErr" class="note" style="color:var(--accent)"></p>
+</section>
 <div id="err" class="winner hide" style="background:#ff3d5a;color:#fff"></div>
-<section id="ref">
+<section id="ref" class="hide">
  <div class="card"><div id="rStatus" class="status">Connecting…</div>
   <div id="rCount" class="count hide"></div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
@@ -90,11 +99,11 @@ const fmt=ms=>(ms/1000).toFixed(2)+'s';
 let uid;try{uid=localStorage.getItem('uid')}catch(e){}
 if(!uid){uid='u'+Math.random().toString(36).slice(2,10);try{localStorage.setItem('uid',uid)}catch(e){}}
 let state={raceId:'r0',status:'waiting',goAt:0},racers=[],finishes=[],offset=0,pinRequired=false,pin='',fx={};
-let me=null,myProg=0,finished=false,lastRace=null,lastSync=0,connected=false;
+let ROOM=null,isRef=false,me=null,myProg=0,finished=false,lastRace=null,lastSync=0,connected=false;
 const now=()=>Date.now()+offset;
 
 async function api(method,body){
-  const r=await fetch('/api/race',method==='GET'?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid,...body})});
+  const r=await fetch(method==='GET'?'/api/race?room='+ROOM:'/api/race',method==='GET'?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid,room:ROOM,...body})});
   const j=await r.json().catch(()=>({error:'Bad response'}));
   if(!r.ok)throw new Error(j.error||('Error '+r.status));return j;
 }
@@ -106,13 +115,13 @@ async function poll(){
     offset=j.now-(t0+Date.now())/2;state=j.state;racers=j.racers;finishes=j.finishes;pinRequired=j.pinRequired;fx=toFx(j.fx);connected=true;showErr('');
     if(state.raceId!==lastRace){lastRace=state.raceId;resetDrive();if(me)register()}
     renderData();
-  }catch(e){connected=false;showErr('⚠️ '+e.message)}
+  }catch(e){if(/not found/i.test(e.message)){alert('This room has expired or does not exist.');location.href='/';return}connected=false;showErr('⚠️ '+e.message)}
   setTimeout(poll,state.status==='countdown'?300:1500);
 }
 const pos=()=>({name:me.name,car:me.car,progress:myProg,x:Math.round(px),y:Math.round(py),h:+heading.toFixed(2)});
 const register=()=>api('POST',{action:'join',...pos(),progress:0}).catch(e=>showErr(e.message));
 
-function show(v){$('ref').classList.toggle('hide',v!=='ref');$('rac').classList.toggle('hide',v!=='rac');
+function show(v){if(v==='ref'&&!isRef)v='rac';$('ref').classList.toggle('hide',v!=='ref');$('rac').classList.toggle('hide',v!=='rac');
   $('tabR').classList.toggle('on',v==='ref');$('tabP').classList.toggle('on',v==='rac');history.replaceState(null,'','#'+v);}
 $('tabR').onclick=()=>show('ref');$('tabP').onclick=()=>show('rac');
 
@@ -397,5 +406,30 @@ function frame(t){
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-show(location.hash==='#rac'?'rac':'ref');poll();
+
+/* ---------- rooms ---------- */
+function applyRole(){$('tabR').classList.toggle('hide',!isRef);$('refLogin').classList.toggle('hide',isRef)}
+function enterRoom(code){
+  ROOM=code;let sv=null;try{sv=localStorage.getItem('turboRef_'+code)}catch(e){}
+  if(sv!==null){isRef=true;pin=sv.slice(2)}
+  ['lobby'].forEach(i=>$(i).classList.add('hide'));$('nav').classList.remove('hide');$('roomBar').classList.remove('hide');
+  $('roomCode').textContent=code;history.replaceState(null,'','?room='+code);
+  applyRole();show(isRef?'ref':'rac');poll();
+}
+function setRef(code,pn){isRef=true;pin=pn||'';try{localStorage.setItem('turboRef_'+code,'p:'+pin)}catch(e){}}
+async function peek(code){const r=await fetch('/api/race?room='+code,{cache:'no-store'});if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'Error '+r.status)}}
+const lerr=m=>$('lobbyErr').textContent=m||'';
+$('bCreate').onclick=async()=>{lerr('');const p=$('newPin').value.trim();
+  try{const j=await api('POST',{action:'create',pin:p});setRef(j.room,p);enterRoom(j.room)}catch(e){lerr('⚠️ '+e.message)}};
+$('bEnter').onclick=async()=>{lerr('');const c=$('joinCode').value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(c.length<4){lerr('Type the room code first');return}
+  try{await peek(c);enterRoom(c)}catch(e){lerr('⚠️ '+(/not found/i.test(e.message)?'Room not found. Check the code.':e.message))}};
+$('joinCode').addEventListener('keydown',e=>{if(e.key==='Enter')$('bEnter').click()});
+$('copyLink').onclick=e=>{e.preventDefault();const url=location.origin+'/?room='+ROOM,el=e.target;
+  (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(()=>{el.textContent='✅ Copied!'}).catch(()=>{prompt('Copy this invite link:',url)});setTimeout(()=>el.textContent='📋 Copy invite link',1800)};
+$('refLogin').onclick=async e=>{e.preventDefault();const p=pinRequired?prompt('Referee PIN?'):'';if(p===null)return;
+  try{await api('POST',{action:'auth',pin:p});setRef(ROOM,p);applyRole();show('ref')}catch(err){showErr('⚠️ '+err.message)}};
+{const q=(new URLSearchParams(location.search).get('room')||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+ if(q)peek(q).then(()=>enterRoom(q)).catch(()=>{$('lobby').classList.remove('hide');lerr('⚠️ Room not found. Check the code.')});
+ else $('lobby').classList.remove('hide')}
 </script></body></html>
