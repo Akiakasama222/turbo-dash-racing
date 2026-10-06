@@ -57,7 +57,7 @@ input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink)
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
    <button class="btn red" id="bStart">🚦 START RACE</button>
    <button class="btn" id="bReset">🔄 New Race</button></div></div>
- <div class="card"><h2>🗺️ Track Map</h2><canvas id="rmap" width="448" height="320" style="width:100%;max-width:520px;display:block;margin:6px auto 0;border:3px solid var(--ink);border-radius:12px"></canvas></div>
+ <div class="card"><h2>🗺️ Track Map</h2><canvas id="rmap" width="640" height="420" style="width:100%;max-width:780px;display:block;margin:6px auto 0;border:3px solid var(--ink);border-radius:12px"></canvas></div>
  <div class="card"><h2>Live Track</h2><div id="rTrack"></div></div>
  <div class="card"><div id="rWin"></div><div id="rPad"></div></div>
 </section>
@@ -165,7 +165,7 @@ const TILE=240,M=.197*TILE,LAPS=3,W=360,H=300,cv=$('cv'),cx=cv.getContext('2d');
 const TFILE={DU:'UpDown',LR:'LeftRight',RU:'UpToRight',LU:'UpToLeft',DL:'DownToLeft',DR:'DownToRight'},TIMG={};
 for(const k in TFILE){const im=new Image();im.src=encodeURI(TFILE[k]+' Track.png');TIMG[k]=im}
 const DIRS={U:[0,-1],D:[0,1],L:[-1,0],R:[1,0]};
-let rTR=null,rSeed=null,rOth={},lastCn=null,wasLost=false;
+let rGeo=null,rTR=null,rSeed=null,rOth={},lastCn=null,wasLost=false;
 let TR=null,lostNow=false,lostT=0,pre=false,px=0,py=0,vx=0,vy=0,heading=-Math.PI/2,speed=0,lap=0,idx=0,off=false,last=performance.now(),dragging=false,jx=0,jy=0,kx=0,ky=0;
 let others={},got=new Set(),boostUntil=0,msg={t:'',until:0},stunnedNow=false,boostedNow=false,reversedNow=false,blockedNow=false,seen={};
 const toast=(t,ms)=>{msg={t,until:Date.now()+ms}};
@@ -329,22 +329,26 @@ function drawCar(x,y,key,hd,wob,g,sc){
   }else{g.rotate(-Math.PI/2);g.textAlign='center';g.textBaseline='middle';g.font='38px serif';g.fillText(C?C.e:(key||'🚗'),0,0)}
   g.restore();
 }
-function drawMap(dt){                       // referee overview map
-  const g=$('rmap').getContext('2d'),sd=state.seed||1,MT=32,S=MT/TILE;
-  if(rSeed!==sd){rSeed=sd;rTR=makeTrack(sd);rOth={}}
+function drawMap(dt){                       // referee overview map: auto-fit + centered
+  const cvm=$('rmap'),g=cvm.getContext('2d'),sd=state.seed||1;
+  if(rSeed!==sd){rSeed=sd;rTR=makeTrack(sd);rOth={};
+    const xs=rTR.cells.map(c=>c.x),ys=rTR.cells.map(c=>c.y),minx=Math.min(...xs),miny=Math.min(...ys),cols=Math.max(...xs)-minx+1,rows=Math.max(...ys)-miny+1;
+    const cw=640,ch=Math.max(260,Math.min(520,Math.round(cw*rows/cols))),pad=12,MT=Math.min((cw-2*pad)/cols,(ch-2*pad)/rows);
+    cvm.width=cw;cvm.height=ch;rGeo={minx,miny,cw,ch,MT,ox:(cw-cols*MT)/2,oy:(ch-rows*MT)/2}}
+  const{minx,miny,cw,ch,MT,ox,oy}=rGeo,S=MT/TILE,mx=wx=>ox+(wx-minx*TILE)*S,my=wy=>oy+(wy-miny*TILE)*S;
   const alive=new Set();
   racers.forEach(r=>{if(!(r.x||r.y))return;alive.add(r.id);const o=rOth[r.id];
     if(!o)rOth[r.id]={x:r.x,y:r.y,h:r.h||0,car:r.car,name:r.name,p:r.progress||0};
     else{const k=Math.min(1,9*dt);o.x+=(r.x-o.x)*k;o.y+=(r.y-o.y)*k;let d=(r.h||0)-o.h;d=Math.atan2(Math.sin(d),Math.cos(d));o.h+=d*k;o.car=r.car;o.name=r.name;o.p=r.progress||0}});
   for(const id in rOth)if(!alive.has(id))delete rOth[id];
-  g.fillStyle='#b8e35a';g.fillRect(0,0,448,320);
-  rTR.cells.forEach(c=>{const im=TIMG[c.open];if(im&&im.complete&&im.naturalWidth)g.drawImage(im,c.x*MT,c.y*MT,MT+1,MT+1);
-    else{g.fillStyle='#c8d0da';g.fillRect(c.x*MT+8,c.y*MT+8,MT-16,MT-16)}});
-  const c0=rTR.cells[0];g.font='14px serif';g.textAlign='center';g.textBaseline='middle';g.fillText('🏁',(c0.x+.5)*MT,(c0.y+.5)*MT);
+  g.fillStyle='#b8e35a';g.fillRect(0,0,cw,ch);
+  rTR.cells.forEach(c=>{const x=ox+(c.x-minx)*MT,y=oy+(c.y-miny)*MT,im=TIMG[c.open];
+    if(im&&im.complete&&im.naturalWidth)g.drawImage(im,x,y,MT+1,MT+1);else{g.fillStyle='#c8d0da';g.fillRect(x+MT*.2,y+MT*.2,MT*.6,MT*.6)}});
+  const c0=rTR.cells[0];g.font=Math.round(MT*.4)+'px serif';g.textAlign='center';g.textBaseline='middle';g.fillText('🏁',ox+(c0.x-minx+.5)*MT,oy+(c0.y-miny+.5)*MT);
   const ids=Object.keys(rOth),top=ids.reduce((b,id)=>rOth[id].p>(b?rOth[b].p:-1)?id:b,null);
-  ids.forEach(id=>{const o=rOth[id];drawCar(o.x*S,o.y*S,o.car,o.h,0,g,.4);
-    g.font='12px Bangers,Impact,sans-serif';g.lineWidth=3;g.strokeStyle='#fff';g.fillStyle='#1c1c2e';g.textAlign='center';
-    const lb=(id===top&&o.p>0?'👑 ':'')+(o.p>=100?'🏁 ':'')+(o.name||'')+fxI(id);g.strokeText(lb,o.x*S,o.y*S-17);g.fillText(lb,o.x*S,o.y*S-17)});
+  ids.forEach(id=>{const o=rOth[id],X=mx(o.x),Y=my(o.y);drawCar(X,Y,o.car,o.h,0,g,MT*.5/60);
+    g.font=Math.max(12,Math.round(MT*.24))+'px Bangers,Impact,sans-serif';g.lineWidth=3;g.strokeStyle='#fff';g.fillStyle='#1c1c2e';g.textAlign='center';
+    const lb=(id===top&&o.p>0?'👑 ':'')+(o.p>=100?'🏁 ':'')+(o.name||'')+fxI(id);g.strokeText(lb,X,Y-MT*.38);g.fillText(lb,X,Y-MT*.38)});
 }
 function draw(){
   cx.fillStyle='#b8e35a';cx.fillRect(0,0,W,H);
