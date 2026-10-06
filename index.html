@@ -159,12 +159,12 @@ $('bJoin').onclick=()=>{const n=$('nm').value.trim();if(!n){$('nm').focus();retu
   resetDrive();register();renderData()};
 
 /* ---------- driving game: joystick steering + power-ups ---------- */
-const TRACK=7000,HALF=72,W=360,H=300,CARY=H-80,cv=$('cv'),cx=cv.getContext('2d');
+const TRACK=16000,HALF=72,W=360,H=300,CARY=H-80,cv=$('cv'),cx=cv.getContext('2d');
 let dist=0,px=0,speed=0,off=false,last=performance.now(),dragging=false,jx=0,jy=0,kx=0,ky=0,steerVis=0;
 let got=new Set(),boostUntil=0,msg={t:'',until:0},stunSeen=0,stunnedNow=false,boostedNow=false,reversedNow=false,blockedNow=false,seen={};
 const road=d=>{d=Math.max(0,d);return Math.min(1,d/500)*(70*Math.sin(d/160)+20*Math.sin(d/100+1))};
-// 10 power-up boxes, same place for everyone (each racer can grab their own)
-const PICKS=[];for(let i=0;i<10;i++)PICKS.push({d:700+i*610+((i*37)%5)*16,o:(((i*7919)%13)/12*2-1)*(HALF-26)});
+// 20 power-up boxes, same place for everyone (each racer can grab their own)
+const PICKS=[];for(let i=0;i<20;i++)PICKS.push({d:700+i*760+((i*37)%5)*16,o:(((i*7919)%13)/12*2-1)*(HALF-26)});
 const toast=(t,ms)=>{msg={t,until:Date.now()+ms}};
 function resetDrive(){dist=0;px=0;speed=0;myProg=0;finished=false;off=false;got=new Set();boostUntil=0;stunSeen=0;seen={};msg={t:'',until:0}}
 const POWERS=[['boost',28],['stun',24],['reverse',18],['block',18],['universal',12]];
