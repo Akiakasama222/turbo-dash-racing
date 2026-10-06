@@ -69,7 +69,7 @@ input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink)
   <div id="pCount" class="count hide" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;text-shadow:3px 3px 0 #fff"></div></div>
   <div id="pTrack"></div>
   <div class="joywrap"><div id="joy"><div id="knob"></div></div></div>
-  <p class="note">Drag the stick to steer. Push up to boost, pull down to brake. Stay on the road and grab the 🎁 boxes: each is a random power-up, a 🚀 speed boost or a ⚡ stun on one random rival! (Keyboard: arrows / WASD)</p></div>
+  <p class="note">Drag the stick to steer. Push up to boost, pull down to brake. Stay on the road and grab the 🎁 boxes! Random power-ups: 🚀 speed boost, ⚡ stun one rival, 💥 universal stun, 🔄 reverse a rival's car, 🙈 block a rival's screen. (Keyboard: arrows / WASD)</p></div>
  <div class="card"><div id="pPad"></div></div>
 </section>
 </main>
@@ -81,13 +81,15 @@ const CARS={
 const CAR_TURN=0;
 for(const k in CARS){const im=new Image();im.src=CARS[k].src;CARS[k].img=im}
 document.documentElement.style.setProperty('--lane',(CAR_TURN+90)+'deg');
+const toFx=l=>{const o={};(l||[]).forEach(x=>{const [u,k]=String(x.id).split('|');(o[u]=o[u]||{})[k]=x});return o};
+const fxI=id=>{const f=fx[id]||{},n=now();return(f.stun&&f.stun.until>n?' 😵':'')+(f.reverse&&f.reverse.until>n?' 🔄':'')+(f.block&&f.block.until>n?' 🙈':'')};
 const carHTML=k=>CARS[k]?`<img src="${CARS[k].src}" alt="" onerror="this.replaceWith(document.createTextNode('${CARS[k].e}'))">`:(k||'🚗');
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=ms=>(ms/1000).toFixed(2)+'s';
 let uid;try{uid=localStorage.getItem('uid')}catch(e){}
 if(!uid){uid='u'+Math.random().toString(36).slice(2,10);try{localStorage.setItem('uid',uid)}catch(e){}}
-let state={raceId:'r0',status:'waiting',goAt:0},racers=[],finishes=[],offset=0,pinRequired=false,pin='',stuns={};
+let state={raceId:'r0',status:'waiting',goAt:0},racers=[],finishes=[],offset=0,pinRequired=false,pin='',fx={};
 let me=null,myProg=0,finished=false,lastRace=null,lastSync=0,connected=false;
 const now=()=>Date.now()+offset;
 
@@ -101,7 +103,7 @@ function showErr(m){const e=$('err');e.textContent=m||'';e.classList.toggle('hid
 async function poll(){
   try{
     const t0=Date.now(),j=await api('GET');
-    offset=j.now-(t0+Date.now())/2;state=j.state;racers=j.racers;finishes=j.finishes;pinRequired=j.pinRequired;stuns=Object.fromEntries((j.stuns||[]).map(x=>[x.id,x]));connected=true;showErr('');
+    offset=j.now-(t0+Date.now())/2;state=j.state;racers=j.racers;finishes=j.finishes;pinRequired=j.pinRequired;fx=toFx(j.fx);connected=true;showErr('');
     if(state.raceId!==lastRace){lastRace=state.raceId;resetDrive();if(me)register()}
     renderData();
   }catch(e){connected=false;showErr('⚠️ '+e.message)}
@@ -115,7 +117,7 @@ $('tabR').onclick=()=>show('ref');$('tabP').onclick=()=>show('rac');
 
 const board=()=>finishes.slice().sort((a,b)=>a.ms-b.ms);
 function lanes(list,el){
-  el.innerHTML=list.length?list.map(r=>`<div class="lane"><span class="nm">${esc(r.name)}${stuns[r.id]&&stuns[r.id].until>now()?' 😵':''}</span><div class="fin"></div><div class="car${CARS[r.car]?' im':''}" ${r.id==='__me'?'id="myCar" ':''}style="left:calc(${Math.min(100,r.progress||0)}% * .93 + 2px)">${carHTML(r.car)}</div></div>`).join(''):'<p class="empty note">No racers yet…</p>';
+  el.innerHTML=list.length?list.map(r=>`<div class="lane"><span class="nm">${esc(r.name)}${fxI(r.id)}</span><div class="fin"></div><div class="car${CARS[r.car]?' im':''}" ${r.id==='__me'?'id="myCar" ':''}style="left:calc(${Math.min(100,r.progress||0)}% * .93 + 2px)">${carHTML(r.car)}</div></div>`).join(''):'<p class="empty note">No racers yet…</p>';
 }
 function pad(el){
   const b=board(),med=['🥇','🥈','🥉'];
@@ -144,7 +146,7 @@ async function ref(action){
   if(pinRequired&&!pin){pin=prompt('Referee PIN?')||''}
   try{await api('POST',{action,pin});showErr('');poll_now()}catch(e){if(/PIN/.test(e.message))pin='';showErr('⚠️ '+e.message)}
 }
-const poll_now=async()=>{try{const t0=Date.now(),j=await api('GET');offset=j.now-(t0+Date.now())/2;state=j.state;racers=j.racers;finishes=j.finishes;stuns=Object.fromEntries((j.stuns||[]).map(x=>[x.id,x]));renderData()}catch(e){}};
+const poll_now=async()=>{try{const t0=Date.now(),j=await api('GET');offset=j.now-(t0+Date.now())/2;state=j.state;racers=j.racers;finishes=j.finishes;fx=toFx(j.fx);renderData()}catch(e){}};
 $('bStart').onclick=()=>ref('start');$('bReset').onclick=()=>ref('reset');
 
 let pickKey;try{pickKey=localStorage.getItem('turboCar');$('nm').value=localStorage.getItem('turboName')||''}catch(e){}
@@ -159,16 +161,20 @@ $('bJoin').onclick=()=>{const n=$('nm').value.trim();if(!n){$('nm').focus();retu
 /* ---------- driving game: joystick steering + power-ups ---------- */
 const TRACK=7000,HALF=72,W=360,H=300,CARY=H-80,cv=$('cv'),cx=cv.getContext('2d');
 let dist=0,px=0,speed=0,off=false,last=performance.now(),dragging=false,jx=0,jy=0,kx=0,ky=0,steerVis=0;
-let got=new Set(),boostUntil=0,msg={t:'',until:0},stunSeen=0,stunnedNow=false,boostedNow=false;
+let got=new Set(),boostUntil=0,msg={t:'',until:0},stunSeen=0,stunnedNow=false,boostedNow=false,reversedNow=false,blockedNow=false,seen={};
 const road=d=>{d=Math.max(0,d);return Math.min(1,d/500)*(70*Math.sin(d/160)+20*Math.sin(d/100+1))};
-// 8 power-up boxes, same place for everyone (each racer can grab their own)
-const PICKS=[];for(let i=0;i<8;i++)PICKS.push({d:800+i*760+((i*37)%5)*20,o:(((i*7919)%13)/12*2-1)*(HALF-26)});
+// 10 power-up boxes, same place for everyone (each racer can grab their own)
+const PICKS=[];for(let i=0;i<10;i++)PICKS.push({d:700+i*610+((i*37)%5)*16,o:(((i*7919)%13)/12*2-1)*(HALF-26)});
 const toast=(t,ms)=>{msg={t,until:Date.now()+ms}};
-function resetDrive(){dist=0;px=0;speed=0;myProg=0;finished=false;off=false;got=new Set();boostUntil=0;stunSeen=0;msg={t:'',until:0}}
+function resetDrive(){dist=0;px=0;speed=0;myProg=0;finished=false;off=false;got=new Set();boostUntil=0;stunSeen=0;seen={};msg={t:'',until:0}}
+const POWERS=[['boost',28],['stun',24],['reverse',18],['block',18],['universal',12]];
 function usePower(){
-  if(Math.random()<.5){boostUntil=Date.now()+2500;toast('🚀 SPEED BOOST!',1500)}
-  else{toast('⚡ STUN! Aiming…',1200);
-    api('POST',{action:'stun',name:me.name}).then(j=>toast(j.hit?'⚡ Stunned '+j.hit.name+'!':'⚡ Stun missed: no target',1800)).catch(()=>{})}
+  let r=Math.random()*100,k='boost';for(const [n,w] of POWERS){if((r-=w)<0){k=n;break}}
+  if(k==='boost'){boostUntil=Date.now()+2500;toast('🚀 SPEED BOOST!',1500);return}
+  const lab={stun:'⚡ STUN',reverse:'🔄 REVERSE',block:'🙈 SCREEN BLOCK',universal:'💥 UNIVERSAL STUN'}[k];
+  toast(lab+'! Aiming…',1200);
+  api('POST',{action:'power',kind:k,name:me.name}).then(j=>{const h=j.hits||[];
+    toast(!h.length?lab+' missed: no target':k==='universal'?'💥 Stunned everyone ('+h.length+')!':lab+' hit '+h[0].name+'!',2000)}).catch(()=>{})
 }
 
 const joy=$('joy'),knob=$('knob');
@@ -187,20 +193,24 @@ addEventListener('keyup',e=>{const k=K[e.code];if(k){held[k]=0;keyUpd()}});
 
 function step(dt){
   const run=state.status==='countdown'&&now()>=state.goAt;
-  const sx=dragging?jx:kx,sy=dragging?jy:ky,t=Date.now();steerVis=sx;
-  const st=stuns[uid];stunnedNow=!!(run&&!finished&&st&&st.until>now());
-  boostedNow=run&&!finished&&t<boostUntil;
-  if(stunnedNow&&stunSeen!==st.until){stunSeen=st.until;toast('😵 STUNNED by '+st.by+'!',2200)}
-  if(run&&!finished){
+  const sx=dragging?jx:kx,sy=dragging?jy:ky,t=Date.now(),n=now(),f=fx[uid]||{};steerVis=sx;
+  const live=run&&!finished,on=k=>live&&f[k]&&f[k].until>n;
+  stunnedNow=on('stun');reversedNow=on('reverse');blockedNow=on('block');
+  boostedNow=live&&t<boostUntil&&!reversedNow;
+  [['stun','😵 STUNNED'],['reverse','🔄 REVERSED'],['block','🙈 BLOCKED']].forEach(([k,txt])=>{
+    if(on(k)&&seen[k]!==f[k].until){seen[k]=f[k].until;toast(txt+' by '+f[k].by+'!',2200)}});
+  $('pTrack').style.visibility=blockedNow?'hidden':'';
+  if(live){
     off=Math.abs(px-road(dist))>HALF-12;
-    if(stunnedNow){speed=Math.max(0,speed-900*dt)}
+    if(stunnedNow){speed-=Math.sign(speed)*Math.min(Math.abs(speed),900*dt)}
     else{
-      const target=off?(boostedNow?200:110):(boostedNow?400:(sy<-.3?340:sy>.3?150:270));
+      let target=off?(boostedNow?200:110):(boostedNow?400:(sy<-.3?340:sy>.3?150:270));
+      if(reversedNow)target=off?-90:-170;
       speed+=(target-speed)*Math.min(1,2.5*dt);
-      px+=sx*300*(.45+.55*speed/300)*dt;
+      px+=sx*300*(.45+.55*Math.abs(speed)/300)*dt;
       PICKS.forEach((p,i)=>{if(!got.has(i)&&Math.abs(dist-p.d)<22&&Math.abs(px-(road(p.d)+p.o))<30){got.add(i);usePower()}});
     }
-    dist+=speed*dt;
+    dist=Math.max(0,dist+speed*dt);if(dist===0&&speed<0)speed=0;
     if(dist>=TRACK){dist=TRACK;finished=true;speed=0;
       api('POST',{action:'progress',name:me.name,car:me.car,progress:100}).catch(()=>{});
       api('POST',{action:'finish',name:me.name}).then(poll_now).catch(e=>showErr(e.message))}
@@ -233,7 +243,7 @@ function draw(){
     cx.rotate(wob+CAR_TURN*Math.PI/180);cx.drawImage(im,-(q?L:Wd)/2,-(q?Wd:L)/2,q?L:Wd,q?Wd:L);
   }else{cx.rotate(Math.PI/2+wob);cx.font='38px serif';cx.fillText(C?C.e:me.car,0,0)}
   cx.restore();
-  if(stunnedNow){cx.font='30px serif';cx.fillText('😵',W/2,CARY-34)}
+  cx.font='30px serif';if(stunnedNow)cx.fillText('😵',W/2,CARY-34);else if(reversedNow)cx.fillText('🔄',W/2,CARY-34);
   cx.fillStyle='#0008';cx.fillRect(10,10,W-20,12);cx.fillStyle='#ffc400';cx.fillRect(10,10,(W-20)*myProg/100,12);
   cx.textAlign='left';cx.font='18px Bangers,Impact,sans-serif';cx.fillStyle='#fff';
   cx.fillText(Math.round(speed*.5)+' km/h',12,42);
@@ -241,6 +251,12 @@ function draw(){
   if(off&&!stunnedNow){cx.fillStyle='#ff3d5a';cx.font='26px Bangers,Impact,sans-serif';cx.fillText('OFF ROAD! SLOW!',W/2,80)}
   if(Date.now()<msg.until){cx.font='30px Bangers,Impact,sans-serif';cx.lineWidth=5;cx.strokeStyle='#000';cx.strokeText(msg.t,W/2,115);cx.fillStyle='#ffc400';cx.fillText(msg.t,W/2,115)}
   if(finished){cx.fillStyle='#ffc400';cx.font='40px Bangers,Impact,sans-serif';cx.fillText('🏁 FINISHED! 🏁',W/2,160)}
+  if(blockedNow){
+    cx.globalAlpha=Math.min(1,(fx[uid].block.until-now())/400)*.97;
+    cx.fillStyle='#14141f';cx.fillRect(0,0,W,H);
+    for(let i=0;i<16;i++){cx.fillStyle=i%2?'#000':'#3a1f4d';cx.beginPath();cx.arc((i*97+Math.sin(Date.now()/400+i)*8)%W,(i*61)%H,28+(i%4)*10,0,7);cx.fill()}
+    cx.fillStyle='#fff';cx.font='34px Bangers,Impact,sans-serif';cx.textAlign='center';cx.fillText('🙈 SCREEN BLOCKED!',W/2,H/2);
+    cx.globalAlpha=1}
 }
 function frame(t){
   const dt=Math.min(.05,(t-last)/1000);last=t;
