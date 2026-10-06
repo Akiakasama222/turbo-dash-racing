@@ -85,7 +85,8 @@ input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink)
 <script>
 const CARS={
  c1:{src:'BlueCar.png',name:'Blue Car',e:'🚙'},c2:{src:'RedCar.png',name:'Red Car',e:'🏎️'},
- c3:{src:'Truck1.png',name:'Truck 1',e:'🛻'},c4:{src:'Truck2.png',name:'Truck 2',e:'🚜'},c5:{src:'WhiteCar.png',name:'White Car',e:'🚗'}};
+ c3:{src:'Truck1.png',name:'Truck 1',e:'🛻'},c4:{src:'Truck2.png',name:'Truck 2',e:'🚜'},c5:{src:'WhiteCar.png',name:'White Car',e:'🚗'},
+ c6:{src:'PinkCar.png',name:'Pink Car',e:'🚗'},c7:{src:'GreenCar.png',name:'Green Car',e:'🚙'},c8:{src:'YellowCar.png',name:'Yellow Car',e:'🚕'}};
 // Which way do your PNGs face? Turn needed so the car points UP: faces up=0, faces right=-90, faces left=90, faces down=180
 const CAR_TURN=0;
 for(const k in CARS){const im=new Image();im.src=CARS[k].src;CARS[k].img=im}
