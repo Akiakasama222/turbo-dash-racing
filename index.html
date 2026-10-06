@@ -215,7 +215,7 @@ function resetDrive(){
   const sl=[...uid].reduce((a,c)=>a+c.charCodeAt(0),0)%5-2;px-=c.pn[1]*sl*18;py+=c.pn[0]*sl*18;others={};
   wasLost=false;lap=0;idx=0;pre=false;lostT=0;lostNow=false;myProg=0;finished=false;off=false;got=new Set();boostUntil=0;seen={};msg={t:'',until:0};
 }
-const POWERS=[['boost',50],['stun',15.3],['reverse',11.57],['block',11.57],['universal',11.56]];   // reverse / block / universal are even
+const POWERS=[['boost',65],['stun',10.7],['reverse',8.1],['block',8.1],['universal',8.1]];   // reverse / block / universal are even
 function usePower(){
   let r=Math.random()*POWERS.reduce((a,p)=>a+p[1],0),k='boost';for(const [n,w] of POWERS){if((r-=w)<0){k=n;break}}
   snd.play('pick');vib(40);
