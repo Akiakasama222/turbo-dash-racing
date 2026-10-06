@@ -36,6 +36,13 @@ input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink)
 .tap{touch-action:manipulation;user-select:none}
 .note{font-size:.9rem;opacity:.75;text-align:center}
 .hide{display:none!important}
+.picker{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:10px 0 16px}
+.pick{width:88px;padding:6px 4px 4px;border:3px solid var(--ink);border-radius:12px;background:var(--card);color:var(--ink);cursor:pointer;text-align:center;font:inherit;font-size:.95rem}
+.pick.sel{background:var(--accent2);color:#1c1c2e;transform:translateY(-4px);box-shadow:0 5px 0 var(--ink)}
+.pick img{height:72px;max-width:100%;width:auto;display:block;margin:0 auto 4px;object-fit:contain}
+.pick .em{font-size:44px;line-height:72px}
+.lane .car.im{transform:none;margin-left:9px;top:3px}
+.lane .car.im img{height:40px;width:auto;display:block;transform:rotate(var(--lane,90deg))}
 .joywrap{display:flex;justify-content:center;margin:14px 0 4px}
 #joy{width:170px;height:170px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#555,#222);border:5px solid var(--ink);position:relative;touch-action:none;user-select:none;box-shadow:inset 0 0 20px #000a,5px 5px 0 var(--ink)}
 #knob{position:absolute;width:78px;height:78px;left:41px;top:41px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ff8a9b,var(--accent) 60%,#a3122b);border:4px solid var(--ink);box-shadow:0 6px 0 #0006;pointer-events:none}
@@ -54,7 +61,8 @@ input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink)
  <div class="card"><div id="rWin"></div><div id="rPad"></div></div>
 </section>
 <section id="rac" class="hide">
- <div class="card" id="join"><h2>Join the race!</h2><p>Pick your name, then wait for the referee.</p>
+ <div class="card" id="join"><h2>Join the race!</h2><p>Pick your car, type your name, then wait for the referee.</p>
+  <div id="carPick" class="picker"></div>
   <input id="nm" maxlength="14" placeholder="Racer name"> <button class="btn" id="bJoin">JOIN 🚗</button></div>
  <div class="card hide" id="play"><div id="pStatus" class="status"></div>
   <div style="position:relative;max-width:420px;margin:0 auto"><canvas id="cv" width="360" height="300" style="width:100%;display:block;border:3px solid var(--ink);border-radius:12px"></canvas>
@@ -66,7 +74,14 @@ input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink)
 </section>
 </main>
 <script>
-const CARS=['🏎️','🚗','🚙','🚓','🚕','🛻','🏍️','🚜'];
+const CARS={
+ c1:{src:'BlueCar.png',name:'Blue Car',e:'🚙'},c2:{src:'RedCar.png',name:'Red Car',e:'🏎️'},
+ c3:{src:'Truck1.png',name:'Truck 1',e:'🛻'},c4:{src:'Truck2.png',name:'Truck 2',e:'🚜'},c5:{src:'WhiteCar.png',name:'White Car',e:'🚗'}};
+// Which way do your PNGs face? Turn needed so the car points UP: faces up=0, faces right=-90, faces left=90, faces down=180
+const CAR_TURN=0;
+for(const k in CARS){const im=new Image();im.src=CARS[k].src;CARS[k].img=im}
+document.documentElement.style.setProperty('--lane',(CAR_TURN+90)+'deg');
+const carHTML=k=>CARS[k]?`<img src="${CARS[k].src}" alt="" onerror="this.replaceWith(document.createTextNode('${CARS[k].e}'))">`:(k||'🚗');
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=ms=>(ms/1000).toFixed(2)+'s';
@@ -100,7 +115,7 @@ $('tabR').onclick=()=>show('ref');$('tabP').onclick=()=>show('rac');
 
 const board=()=>finishes.slice().sort((a,b)=>a.ms-b.ms);
 function lanes(list,el){
-  el.innerHTML=list.length?list.map(r=>`<div class="lane"><span class="nm">${esc(r.name)}${stuns[r.id]&&stuns[r.id].until>now()?' 😵':''}</span><div class="fin"></div><div class="car" ${r.id==='__me'?'id="myCar" ':''}style="left:calc(${Math.min(100,r.progress||0)}% * .93 + 2px)">${r.car||'🚗'}</div></div>`).join(''):'<p class="empty note">No racers yet…</p>';
+  el.innerHTML=list.length?list.map(r=>`<div class="lane"><span class="nm">${esc(r.name)}${stuns[r.id]&&stuns[r.id].until>now()?' 😵':''}</span><div class="fin"></div><div class="car${CARS[r.car]?' im':''}" ${r.id==='__me'?'id="myCar" ':''}style="left:calc(${Math.min(100,r.progress||0)}% * .93 + 2px)">${carHTML(r.car)}</div></div>`).join(''):'<p class="empty note">No racers yet…</p>';
 }
 function pad(el){
   const b=board(),med=['🥇','🥈','🥉'];
@@ -132,8 +147,14 @@ async function ref(action){
 const poll_now=async()=>{try{const t0=Date.now(),j=await api('GET');offset=j.now-(t0+Date.now())/2;state=j.state;racers=j.racers;finishes=j.finishes;stuns=Object.fromEntries((j.stuns||[]).map(x=>[x.id,x]));renderData()}catch(e){}};
 $('bStart').onclick=()=>ref('start');$('bReset').onclick=()=>ref('reset');
 
+let pickKey;try{pickKey=localStorage.getItem('turboCar');$('nm').value=localStorage.getItem('turboName')||''}catch(e){}
+if(!CARS[pickKey])pickKey='c1';
+function renderPicker(){$('carPick').innerHTML=Object.entries(CARS).map(([k,c])=>`<button type="button" class="pick${k===pickKey?' sel':''}" data-k="${k}"><img src="${c.src}" alt="" style="transform:rotate(${CAR_TURN}deg)" onerror="this.outerHTML='<div class=em>${c.e}</div>'"><div>${c.name}</div></button>`).join('')}
+$('carPick').onclick=e=>{const b=e.target.closest('.pick');if(!b)return;pickKey=b.dataset.k;renderPicker()};
+renderPicker();
 $('bJoin').onclick=()=>{const n=$('nm').value.trim();if(!n){$('nm').focus();return}
-  me={name:n,car:CARS[Math.floor(Math.random()*CARS.length)]};resetDrive();register();renderData()};
+  me={name:n,car:pickKey};try{localStorage.setItem('turboCar',pickKey);localStorage.setItem('turboName',n)}catch(e){}
+  resetDrive();register();renderData()};
 
 /* ---------- driving game: joystick steering + power-ups ---------- */
 const TRACK=7000,HALF=72,W=360,H=300,CARY=H-80,cv=$('cv'),cx=cv.getContext('2d');
@@ -205,8 +226,13 @@ function draw(){
   cx.save();cx.translate(W/2+sh,CARY);
   cx.fillStyle='#0005';cx.beginPath();cx.ellipse(3,6,15,22,0,0,7);cx.fill();
   if(boostedNow){cx.font='26px serif';cx.fillText('🔥',0,36)}
-  cx.rotate(Math.PI/2+steerVis*.3+(stunnedNow?Math.sin(Date.now()/60)*.5:0));cx.font='38px serif';
-  cx.fillText(me.car,0,0);cx.restore();
+  const wob=steerVis*.3+(stunnedNow?Math.sin(Date.now()/60)*.5:0),C=CARS[me.car],im=C&&C.img;
+  if(im&&im.complete&&im.naturalWidth){
+    const q=Math.abs(CAR_TURN)%180===90,lenP=q?im.naturalWidth:im.naturalHeight,widP=q?im.naturalHeight:im.naturalWidth;
+    const L=60,Wd=Math.min(46,L*widP/lenP);
+    cx.rotate(wob+CAR_TURN*Math.PI/180);cx.drawImage(im,-(q?L:Wd)/2,-(q?Wd:L)/2,q?L:Wd,q?Wd:L);
+  }else{cx.rotate(Math.PI/2+wob);cx.font='38px serif';cx.fillText(C?C.e:me.car,0,0)}
+  cx.restore();
   if(stunnedNow){cx.font='30px serif';cx.fillText('😵',W/2,CARY-34)}
   cx.fillStyle='#0008';cx.fillRect(10,10,W-20,12);cx.fillStyle='#ffc400';cx.fillRect(10,10,(W-20)*myProg/100,12);
   cx.textAlign='left';cx.font='18px Bangers,Impact,sans-serif';cx.fillStyle='#fff';
