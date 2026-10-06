@@ -15,7 +15,7 @@ async function redis(cmds) {
 const parse = s => { try { return JSON.parse(s); } catch { return null; } };
 const hash = flat => { const o = []; for (let i = 0; i < (flat || []).length; i += 2) { const v = parse(flat[i + 1]); if (v) o.push({ id: flat[i], ...v }); } return o; };
 const clean = s => String(s || '').replace(/[<>]/g, '').slice(0, 14);
-const getState = async () => parse((await redis([['GET', 'turbo:state']]))[0]) || { raceId: 'r0', status: 'waiting', goAt: 0 };
+const getState = async () => parse((await redis([['GET', 'turbo:state']]))[0]) || { raceId: 'r0', status: 'waiting', goAt: 0, seed: 1 };
 
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -37,7 +37,7 @@ module.exports = async (req, res) => {
       if (PIN && b.pin !== PIN) return res.status(401).json({ error: 'Wrong referee PIN' });
       const next = b.action === 'start'
         ? { ...state, status: 'countdown', goAt: now + 4000 }
-        : { raceId: 'r' + now, status: 'waiting', goAt: 0 };
+        : { raceId: 'r' + now, status: 'waiting', goAt: 0, seed: 1 + Math.floor(Math.random() * 2147483000) }; // new random track
       await redis([['SET', 'turbo:state', JSON.stringify(next), 'EX', 86400]]);
       return res.json({ ok: true, state: next, now });
     }
