@@ -35,7 +35,10 @@ input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink)
 .pad .empty{opacity:.6}
 .tap{touch-action:manipulation;user-select:none}
 .note{font-size:.9rem;opacity:.75;text-align:center}
-.hide{display:none}
+.hide{display:none!important}
+.joywrap{display:flex;justify-content:center;margin:14px 0 4px}
+#joy{width:170px;height:170px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#555,#222);border:5px solid var(--ink);position:relative;touch-action:none;user-select:none;box-shadow:inset 0 0 20px #000a,5px 5px 0 var(--ink)}
+#knob{position:absolute;width:78px;height:78px;left:41px;top:41px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ff8a9b,var(--accent) 60%,#a3122b);border:4px solid var(--ink);box-shadow:0 6px 0 #0006;pointer-events:none}
 </style></head><body>
 <header><h1>🏁 TURBO DASH RACING 🏁</h1>
 <nav><button id="tabR" class="on">🚦 Referee</button><button id="tabP">🏎️ Racers</button></nav></header>
@@ -54,9 +57,11 @@ input{font:inherit;font-size:1.2rem;padding:8px 12px;border:3px solid var(--ink)
  <div class="card" id="join"><h2>Join the race!</h2><p>Pick your name, then wait for the referee.</p>
   <input id="nm" maxlength="14" placeholder="Racer name"> <button class="btn" id="bJoin">JOIN 🚗</button></div>
  <div class="card hide" id="play"><div id="pStatus" class="status"></div>
-  <div id="pCount" class="count hide"></div><div id="pTrack"></div>
-  <button class="btn go red tap" id="bTap" disabled>MASH ME! 💨</button>
-  <p class="note">Tap the button (or press SPACE) as fast as you can!</p></div>
+  <div style="position:relative;max-width:420px;margin:0 auto"><canvas id="cv" width="360" height="300" style="width:100%;display:block;border:3px solid var(--ink);border-radius:12px"></canvas>
+  <div id="pCount" class="count hide" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;text-shadow:3px 3px 0 #fff"></div></div>
+  <div id="pTrack"></div>
+  <div class="joywrap"><div id="joy"><div id="knob"></div></div></div>
+  <p class="note">Drag the stick to steer. Push up to boost, pull down to brake. Stay on the road! (Keyboard: arrows / WASD)</p></div>
  <div class="card"><div id="pPad"></div></div>
 </section>
 </main>
@@ -82,7 +87,7 @@ async function poll(){
   try{
     const t0=Date.now(),j=await api('GET');
     offset=j.now-(t0+Date.now())/2;state=j.state;racers=j.racers;finishes=j.finishes;pinRequired=j.pinRequired;connected=true;showErr('');
-    if(state.raceId!==lastRace){lastRace=state.raceId;myProg=0;finished=false;if(me)register()}
+    if(state.raceId!==lastRace){lastRace=state.raceId;resetDrive();if(me)register()}
     renderData();
   }catch(e){connected=false;showErr('⚠️ '+e.message)}
   setTimeout(poll,800);
@@ -95,7 +100,7 @@ $('tabR').onclick=()=>show('ref');$('tabP').onclick=()=>show('rac');
 
 const board=()=>finishes.slice().sort((a,b)=>a.ms-b.ms);
 function lanes(list,el){
-  el.innerHTML=list.length?list.map(r=>`<div class="lane"><span class="nm">${esc(r.name)}</span><div class="fin"></div><div class="car" style="left:calc(${Math.min(100,r.progress||0)}% * .93 + 2px)">${r.car||'🚗'}</div></div>`).join(''):'<p class="empty note">No racers yet…</p>';
+  el.innerHTML=list.length?list.map(r=>`<div class="lane"><span class="nm">${esc(r.name)}</span><div class="fin"></div><div class="car" ${r.id==='__me'?'id="myCar" ':''}style="left:calc(${Math.min(100,r.progress||0)}% * .93 + 2px)">${r.car||'🚗'}</div></div>`).join(''):'<p class="empty note">No racers yet…</p>';
 }
 function pad(el){
   const b=board(),med=['🥇','🥈','🥉'];
@@ -103,7 +108,7 @@ function pad(el){
 }
 function renderData(){
   lanes(racers.filter(r=>r.id!==uid||!me),$('rTrack'));
-  if(me)lanes(racers.filter(r=>r.id!==uid).concat([{name:me.name+' (you)',car:me.car,progress:myProg}]),$('pTrack'));
+  if(me)lanes(racers.filter(r=>r.id!==uid).concat([{id:'__me',name:me.name+' (you)',car:me.car,progress:myProg}]),$('pTrack'));
   pad($('rPad'));pad($('pPad'));
   const b=board();$('rWin').innerHTML=b.length?`<div class="winner">🏆 First across the line: <b>${esc(b[0].name)}</b> (${fmt(b[0].ms)})</div>`:'';
   renderTick();
@@ -117,7 +122,6 @@ function renderTick(){
   ['rCount','pCount'].forEach(id=>{$(id).classList.toggle('hide',!showC);$(id).textContent=left>0?Math.ceil(left/1000):'GO!'});
   $('join').classList.toggle('hide',!!me);$('play').classList.toggle('hide',!me);
   $('pStatus').textContent=finished?'🎉 You finished! Check the notepad.':cd?'Get ready…':run?'GO GO GO!':'Waiting for the referee to start…';
-  $('bTap').disabled=!run||finished;
 }
 setInterval(renderTick,100);
 
@@ -129,16 +133,70 @@ const poll_now=async()=>{try{const t0=Date.now(),j=await api('GET');offset=j.now
 $('bStart').onclick=()=>ref('start');$('bReset').onclick=()=>ref('reset');
 
 $('bJoin').onclick=()=>{const n=$('nm').value.trim();if(!n){$('nm').focus();return}
-  me={name:n,car:CARS[Math.floor(Math.random()*CARS.length)]};myProg=0;finished=false;register();renderData()};
-function tap(){
-  if(!me||finished||state.status!=='countdown'||now()<state.goAt)return;
-  myProg+=1.5+Math.random()*.6;
-  if(myProg>=100){myProg=100;finished=true;
-    api('POST',{action:'finish',name:me.name}).then(poll_now).catch(e=>showErr(e.message));}
-  if(Date.now()-lastSync>400||finished){lastSync=Date.now();api('POST',{action:'progress',name:me.name,car:me.car,progress:myProg}).catch(()=>{})}
-  renderData();
+  me={name:n,car:CARS[Math.floor(Math.random()*CARS.length)]};resetDrive();register();renderData()};
+
+/* ---------- driving game: joystick steering ---------- */
+const TRACK=7000,HALF=72,W=360,H=300,CARY=H-80,cv=$('cv'),cx=cv.getContext('2d');
+let dist=0,px=0,speed=0,off=false,last=performance.now(),dragging=false,jx=0,jy=0,kx=0,ky=0,steerVis=0;
+const road=d=>{d=Math.max(0,d);return Math.min(1,d/500)*(70*Math.sin(d/160)+20*Math.sin(d/100+1))};
+function resetDrive(){dist=0;px=0;speed=0;myProg=0;finished=false;off=false}
+
+const joy=$('joy'),knob=$('knob');
+function setJoy(e){const r=joy.getBoundingClientRect(),R=r.width/2,m=70;
+  let dx=e.clientX-(r.left+R),dy=e.clientY-(r.top+R);const d=Math.hypot(dx,dy);
+  if(d>m){dx*=m/d;dy*=m/d}jx=dx/m;jy=dy/m;knob.style.transform=`translate(${dx}px,${dy}px)`}
+const rel=()=>{dragging=false;jx=jy=0;knob.style.transform=''};
+joy.addEventListener('pointerdown',e=>{joy.setPointerCapture(e.pointerId);dragging=true;setJoy(e)});
+joy.addEventListener('pointermove',e=>{if(dragging)setJoy(e)});
+joy.addEventListener('pointerup',rel);joy.addEventListener('pointercancel',rel);
+const K={ArrowLeft:'l',KeyA:'l',ArrowRight:'r',KeyD:'r',ArrowUp:'u',KeyW:'u',ArrowDown:'d',KeyS:'d'},held={};
+function keyUpd(){kx=(held.r?1:0)-(held.l?1:0);ky=(held.d?1:0)-(held.u?1:0);
+  if(!dragging)knob.style.transform=`translate(${kx*55}px,${ky*55}px)`}
+addEventListener('keydown',e=>{const k=K[e.code];if(!k||$('rac').classList.contains('hide')||document.activeElement.tagName==='INPUT')return;e.preventDefault();held[k]=1;keyUpd()});
+addEventListener('keyup',e=>{const k=K[e.code];if(k){held[k]=0;keyUpd()}});
+
+function step(dt){
+  const run=state.status==='countdown'&&now()>=state.goAt;
+  const sx=dragging?jx:kx,sy=dragging?jy:ky;steerVis=sx;
+  if(run&&!finished){
+    off=Math.abs(px-road(dist))>HALF-12;
+    const target=off?110:(sy<-.3?340:sy>.3?150:270);
+    speed+=(target-speed)*Math.min(1,2.5*dt);
+    px+=sx*300*(.45+.55*speed/300)*dt;
+    dist+=speed*dt;
+    if(dist>=TRACK){dist=TRACK;finished=true;speed=0;
+      api('POST',{action:'progress',name:me.name,car:me.car,progress:100}).catch(()=>{});
+      api('POST',{action:'finish',name:me.name}).then(poll_now).catch(e=>showErr(e.message))}
+    else if(Date.now()-lastSync>400){lastSync=Date.now();
+      api('POST',{action:'progress',name:me.name,car:me.car,progress:dist/TRACK*100}).catch(()=>{})}
+  }else{speed=0;off=false}
+  myProg=dist/TRACK*100;
+  const c=$('myCar');if(c)c.style.left=`calc(${myProg}% * .93 + 2px)`;
 }
-$('bTap').onclick=tap;
-addEventListener('keydown',e=>{if(e.code==='Space'&&!$('rac').classList.contains('hide')&&document.activeElement.tagName!=='INPUT'){e.preventDefault();tap()}});
+function draw(){
+  for(let y=0;y<H;y+=4){
+    const d=dist+(CARY-y),c=W/2+road(d)-px,band=Math.floor(d/40)&1;
+    cx.fillStyle=band?'#3c9d4e':'#46ad58';cx.fillRect(0,y,W,4);
+    cx.fillStyle=band?'#e33':'#fff';cx.fillRect(c-HALF-8,y,8,4);cx.fillRect(c+HALF,y,8,4);
+    cx.fillStyle='#3a3a4a';cx.fillRect(c-HALF,y,HALF*2,4);
+    if((Math.floor(d/30)&1)===0){cx.fillStyle='#ffffff99';cx.fillRect(c-2,y,4,4)}
+    if((d>=TRACK&&d<TRACK+16)||(d>=0&&d<8)){for(let i=0;i<HALF*2;i+=12){cx.fillStyle=((i/12+Math.floor(d/8))&1)?'#000':'#fff';cx.fillRect(c-HALF+i,y,12,4)}}
+  }
+  cx.save();cx.translate(W/2,CARY);
+  cx.fillStyle='#0005';cx.beginPath();cx.ellipse(3,6,15,22,0,0,7);cx.fill();
+  cx.rotate(Math.PI/2+steerVis*.3);cx.font='38px serif';cx.textAlign='center';cx.textBaseline='middle';
+  cx.fillText(me.car,0,0);cx.restore();
+  cx.fillStyle='#0008';cx.fillRect(10,10,W-20,12);cx.fillStyle='#ffc400';cx.fillRect(10,10,(W-20)*myProg/100,12);
+  cx.textAlign='left';cx.font='18px Bangers,Impact,sans-serif';cx.fillStyle='#fff';
+  cx.fillText(Math.round(speed*.5)+' km/h',12,42);
+  if(off){cx.textAlign='center';cx.fillStyle='#ff3d5a';cx.font='26px Bangers,Impact,sans-serif';cx.fillText('OFF ROAD! SLOW!',W/2,80)}
+  if(finished){cx.textAlign='center';cx.fillStyle='#ffc400';cx.font='40px Bangers,Impact,sans-serif';cx.fillText('🏁 FINISHED! 🏁',W/2,130)}
+}
+function frame(t){
+  const dt=Math.min(.05,(t-last)/1000);last=t;
+  if(me&&!$('rac').classList.contains('hide')){step(dt);draw()}
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
 show(location.hash==='#rac'?'rac':'ref');poll();
 </script></body></html>
